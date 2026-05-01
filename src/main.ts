@@ -462,12 +462,16 @@ async function handleSend(): Promise<void> {
     history,
     {
       onDelta: (delta) => {
+        // First real text token — the model is done with tool calls and is
+        // now answering. Clear the chip exactly once, here.
+        if (!assistantMsg.content) clearAssistantToolStatus(assistantMsg.id);
         assistantMsg.content += delta;
         updateAssistantStream(assistantMsg.id, assistantMsg.content);
       },
       onDone: (full) => {
         assistantMsg.content = full;
         updateAssistantStream(assistantMsg.id, full, true);
+        clearAssistantToolStatus(assistantMsg.id);
         chat!.updatedAt = Date.now();
         persist();
         isStreaming = false;
@@ -480,6 +484,7 @@ async function handleSend(): Promise<void> {
           chat!.messages.pop();
         }
         updateAssistantStream(assistantMsg.id, assistantMsg.content || '', true);
+        clearAssistantToolStatus(assistantMsg.id);
         renderActive();
         showError(err.message || 'Something went wrong.');
         persist();
@@ -496,8 +501,13 @@ async function handleSend(): Promise<void> {
         updateAssistantToolStatus(assistantMsg.id, q);
       },
       onToolResult: (name) => {
+        // Don't clear here — the model may immediately call another tool,
+        // or start streaming text. The chip will either be updated by the
+        // next onToolCall, or removed by onDelta/onDone.
+        // Meanwhile show a generic "Thinking..." so we're not lying about
+        // still searching.
         if (name === 'web_search' || name === 'fetch_page') {
-          clearAssistantToolStatus(assistantMsg.id);
+          updateAssistantToolStatus(assistantMsg.id, 'Thinking…');
         }
       },
     },
