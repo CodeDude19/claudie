@@ -493,12 +493,21 @@ async function handleSend(): Promise<void> {
         currentStream = null;
       },
       onToolCall: (name, input) => {
-        const q = name === 'web_search'
-          ? `Searching: "${(input as { query?: string }).query ?? ''}"`
-          : name === 'fetch_page'
-            ? `Reading: ${(input as { url?: string }).url ?? ''}`
-            : `Running tool: ${name}`;
-        updateAssistantToolStatus(assistantMsg.id, q);
+        let label: string;
+        if (name === 'web_search') {
+          const queries = (input as { queries?: string[] }).queries ?? [];
+          label = queries.length > 1
+            ? `Searching ${queries.length} queries in parallel…`
+            : `Searching: "${queries[0] ?? ''}"`;
+        } else if (name === 'fetch_page') {
+          const urls = (input as { urls?: string[] }).urls ?? [];
+          label = urls.length > 1
+            ? `Reading ${urls.length} pages…`
+            : `Reading ${urls[0] ?? ''}`;
+        } else {
+          label = `Running tool: ${name}`;
+        }
+        updateAssistantToolStatus(assistantMsg.id, label);
       },
       onToolResult: (name) => {
         // Don't clear here — the model may immediately call another tool,

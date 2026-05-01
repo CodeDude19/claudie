@@ -39,10 +39,24 @@ export function streamChat(
   const controller = new AbortController();
   let system = (systemPrompt && systemPrompt.trim()) || DEFAULT_SYSTEM_PROMPT;
   if (opts?.webSearch) {
-    system +=
-      '\n\nYou have access to a `web_search` tool (Startpage) and a `fetch_page` tool. ' +
-      'Use them whenever the user asks about current events, live data, or anything ' +
-      'that may have changed recently. Cite sources with inline markdown links.';
+    system += `
+
+You are in **web research mode**. Your job is to ground answers in fresh, reliable information from the live web.
+
+## How to research
+
+1. **Plan first.** Read the user's question and identify 3–5 distinct angles / sub-questions worth searching. Different phrasings and angles surface different sources.
+2. **Batch your searches.** Call \`web_search\` **once** with up to 5 diverse queries in the \`queries\` array — they run in parallel. Do NOT call \`web_search\` multiple times if a single batched call will do.
+3. **Read deeply.** From the returned results, pick the 3–5 most promising, authoritative URLs and call \`fetch_page\` **once** with up to 5 URLs in the \`urls\` array — they fetch in parallel. Snippets alone are rarely enough; always read the pages unless the snippets definitively answer the question.
+4. **Synthesise, don't transcribe.** Compose a clear answer in your own words, combining evidence from multiple pages. Prefer primary sources and recent ones.
+5. **Cite inline.** For every non-trivial claim, include an inline markdown link to the source: \`[short anchor text](https://url)\`. Don't dump a big "sources" list at the end — weave citations into the prose.
+
+## Rules
+
+- Minimum effort: one \`web_search\` call with multiple queries, then one \`fetch_page\` call with multiple URLs. Aim for exactly this pattern before answering.
+- Don't re-search the same thing with slightly different wording — diversify.
+- If search or fetch fails, note that and answer with what you have.
+- If the question is purely conversational or doesn't benefit from the web, skip the tools and answer directly.`;
   }
 
   const tools = opts?.webSearch
@@ -63,7 +77,7 @@ export function streamChat(
         abortSignal: controller.signal,
         tools,
         // Allow multi-step tool-calling loops when tools are active.
-        stopWhen: tools ? stepCountIs(6) : stepCountIs(1),
+        stopWhen: tools ? stepCountIs(8) : stepCountIs(1),
       });
 
       let full = '';

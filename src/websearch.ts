@@ -86,76 +86,132 @@ export async function fetchPageText(url: string): Promise<{ url: string; title: 
 
 // ── AI SDK tool definitions ──────────────────────────
 
+// ── Dedupe ───────────────────────────────────────────
+function dedupe(results: SearchResult[]): SearchResult[] {
+  const seen = new Map<string, SearchResult>();
+  for (const r of results) {
+    try {
+      const u = new URL(r.link);
+      const key = u.hostname + u.pathname.replace(/\/$/, '');
+      if (!seen.has(key)) seen.set(key, r);
+    } catch {
+      /* skip malformed URL */
+    }
+  }
+  return Array.from(seen.values());
+}
+
+// ── Schemas ──────────────────────────────────────────
+
+const MAX_QUERIES = 5;
+const MAX_PAGES = 5;
+
 const webSearchSchema = jsonSchema({
   type: 'object',
   properties: {
-    query: {
-      type: 'string',
-      description: 'The search query to send to Startpage. Be concise and specific.',
+    queries: {
+      type: 'array',
+      items: { type: 'string' },
+      description: `An array of 1–${MAX_QUERIES} diverse search queries run in parallel. Vary phrasing and angle for broader coverage.`,
     },
   },
-  required: ['query'],
+  required: ['queries'],
 });
 
 const fetchPageSchema = jsonSchema({
   type: 'object',
   properties: {
-    url: {
-      type: 'string',
-      description: 'The full URL to fetch (include https://). Returns cleaned page text.',
+    urls: {
+      type: 'array',
+      items: { type: 'string' },
+      description: `1–${MAX_PAGES} fully-qualified URLs (include https://) to fetch in parallel. Returns the cleaned readable text of each.`,
     },
   },
-  required: ['url'],
+  required: ['urls'],
 });
 
-/**
- * Creates the web_search tool bound to Startpage.
- * Returns an object compatible with Vercel AI SDK's `tools:` option.
- */
+// ── Parallel search tool ─────────────────────────────
+
+export interface ParallelSearchResponse {
+  queries: string[];
+  engine: 'startpage';
+  totalRaw: number;
+  uniqueResults: SearchResult[];
+  perQuery: Array<{ query: string; count: number }>;
+  note?: string;
+}
+
 export function createWebSearchTool() {
   return {
     type: 'function' as const,
-    description:
-      'Search the web via Startpage. Returns the top results (title, link, snippet). Use for anything that requires up-to-date or external information.',
+    description: `Search the web via Startpage. Accepts up to ${MAX_QUERIES} queries and runs them in parallel, then returns deduplicated unique results (title, link, snippet). Use diverse queries to widen coverage. After seeing the results, call fetch_page on the ${MAX_PAGES} most relevant URLs to get full content.`,
     parameters: webSearchSchema,
     inputSchema: webSearchSchema,
-    execute: async (input: { query: string }): Promise<SearchResponse> => {
-      const query = (input.query || '').trim();
-      if (!query) {
-        return { query, engine: 'startpage', results: [], note: 'empty query' };
-      }
-      try {
-        const results = await searchStartpage(query);
-        return { query, engine: 'startpage', results };
-      } catch (err) {
+    execute: async (input: { queries: string[] }): Promise<ParallelSearchResponse> => {
+      const queries = (input.queries || [])
+        .map((q) => (q || '').trim())
+        .filter(Boolean)
+        .slice(0, MAX_QUERIES);
+
+      if (queries.length === 0) {
         return {
-          query,
+          queries: [],
           engine: 'startpage',
-          results: [],
-          note: `search failed: ${(err as Error).message}`,
+          totalRaw: 0,
+          uniqueResults: [],
+          perQuery: [],
+          note: 'empty queries',
         };
       }
+
+      const settled = await Promise.all(
+        queries.map((q) => searchStartpage(q).catch(() => [] as SearchResult[]))
+      );
+
+      const totalRaw = settled.reduce((sum, arr) => sum + arr.length, 0);
+      const uniqueResults = dedupe(settled.flat());
+      const perQuery = queries.map((q, i) => ({ query: q, count: settled[i].length }));
+
+      return {
+        queries,
+        engine: 'startpage',
+        totalRaw,
+        uniqueResults,
+        perQuery,
+      };
     },
   };
 }
 
-/**
- * Creates the fetch_page tool — lets the model pull the readable text
- * content of a specific URL when it wants to go deeper than the snippet.
- */
+// ── Parallel page-fetch tool ─────────────────────────
+
+export interface ParallelFetchResponse {
+  pages: Array<{ url: string; title?: string; content?: string; truncated?: boolean; error?: string }>;
+}
+
 export function createFetchPageTool() {
   return {
     type: 'function' as const,
-    description:
-      'Fetch the readable text content of a web page by URL. Use after web_search if you need the full details of a specific result.',
+    description: `Fetch the readable text of up to ${MAX_PAGES} URLs in parallel. Use after web_search to read the full content of the most relevant results.`,
     parameters: fetchPageSchema,
     inputSchema: fetchPageSchema,
-    execute: async (input: { url: string }) => {
-      try {
-        return await fetchPageText(input.url);
-      } catch (err) {
-        return { url: input.url, error: (err as Error).message };
-      }
+    execute: async (input: { urls: string[] }): Promise<ParallelFetchResponse> => {
+      const urls = (input.urls || [])
+        .map((u) => (u || '').trim())
+        .filter(Boolean)
+        .slice(0, MAX_PAGES);
+
+      const pages = await Promise.all(
+        urls.map(async (url) => {
+          try {
+            const page = await fetchPageText(url);
+            return page;
+          } catch (err) {
+            return { url, error: (err as Error).message };
+          }
+        })
+      );
+      return { pages };
     },
   };
 }
