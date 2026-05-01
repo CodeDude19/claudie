@@ -490,11 +490,6 @@ function autoGrow(): void {
 }
 
 chatInput.addEventListener('input', autoGrow);
-chatInput.addEventListener('focus', () => {
-  // iOS sometimes leaves the page scrolled when the keyboard opens.
-  // Force document back to origin — the app is position:fixed anyway.
-  requestAnimationFrame(() => window.scrollTo(0, 0));
-});
 chatInput.addEventListener('keydown', (e) => {
   // Desktop shortcut — Enter sends, Shift+Enter newline. On mobile (no physical keyboard), this is a noop.
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
@@ -793,21 +788,33 @@ if ('serviceWorker' in navigator) {
 }
 
 // ── Viewport + iOS keyboard ──
-// Keep `--viewport-h` in sync with the visual viewport so the chat area
-// actually shrinks above the on-screen keyboard instead of the composer
-// getting shoved off-screen.
-function updateViewportHeight(): void {
+// Pin the app to the visual viewport. On iOS Safari, focusing an input that
+// would be hidden behind the keyboard makes the *layout* viewport scroll up —
+// which sends anything `position: fixed; top: 0` flying toward the notch.
+// Tracking `visualViewport.offsetTop` and re-pinning there cancels that scroll.
+const root = document.documentElement;
+function updateViewport(): void {
   const vv = window.visualViewport;
-  const h = vv ? vv.height : window.innerHeight;
-  document.documentElement.style.setProperty('--viewport-h', `${h}px`);
+  if (vv) {
+    root.style.setProperty('--viewport-h', `${vv.height}px`);
+    root.style.setProperty('--viewport-top', `${vv.offsetTop}px`);
+  } else {
+    root.style.setProperty('--viewport-h', `${window.innerHeight}px`);
+    root.style.setProperty('--viewport-top', `0px`);
+  }
 }
-updateViewportHeight();
+updateViewport();
 if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', updateViewportHeight);
-  window.visualViewport.addEventListener('scroll', updateViewportHeight);
+  window.visualViewport.addEventListener('resize', updateViewport);
+  window.visualViewport.addEventListener('scroll', updateViewport);
 }
-window.addEventListener('resize', updateViewportHeight);
-window.addEventListener('orientationchange', () => setTimeout(updateViewportHeight, 120));
+window.addEventListener('resize', updateViewport);
+window.addEventListener('orientationchange', () => setTimeout(updateViewport, 120));
+// iOS sometimes scrolls the page on focus/blur even with position:fixed.
+// Snap back to origin whenever the document scrolls; the app is fixed anyway.
+window.addEventListener('scroll', () => {
+  if (window.scrollY !== 0 || window.scrollX !== 0) window.scrollTo(0, 0);
+}, { passive: true });
 
 // Prevent double-tap zoom on iOS for interactive controls (touch-action: manipulation
 // handles most of this, but belt + suspenders for older iOS).

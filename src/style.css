@@ -38,7 +38,7 @@
 
   /* Dynamic viewport tracking (driven from JS via visualViewport). */
   --viewport-h: 100dvh;
-  --kb-offset: 0px;
+  --viewport-top: 0px;
 }
 
 * {
@@ -84,10 +84,11 @@ select {
 
 #app {
   position: fixed;
-  top: 0;
   left: 0;
   right: 0;
-  /* height tracks the visual viewport — collapses with the iOS keyboard */
+  /* Pin to the visual viewport — Safari otherwise scrolls the layout viewport
+     when the keyboard opens, sending our "fixed" bar flying up to the notch. */
+  top: var(--viewport-top);
   height: var(--viewport-h);
   display: flex;
   flex-direction: column;
@@ -575,8 +576,10 @@ body.editing-mode .composer {
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 8px 12px calc(10px + var(--sab));
-  background: linear-gradient(to top, var(--bg) 60%, rgba(31, 30, 29, 0));
+  /* Only pad the home-indicator inset when the keyboard is hidden. iOS
+     zeroes --sab while the keyboard is up, so this collapses naturally. */
+  padding: 6px 10px calc(max(var(--sab), 6px));
+  background: linear-gradient(to top, var(--bg) 70%, rgba(31, 30, 29, 0));
   display: flex;
   flex-direction: column;
   gap: 6px;
