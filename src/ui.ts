@@ -33,6 +33,28 @@ function scrollToBottom(instant = false): void {
   }
 }
 
+/**
+ * Aggressively pin to bottom across multiple frames.
+ *
+ * `content-visibility: auto` + intrinsic-size estimates mean scrollHeight
+ * changes as offscreen bubbles render for real. A single scroll at paint
+ * time lands on a stale value. We snap on the current frame (for an instant
+ * visual baseline), then again after two rAFs (real layout settles), then
+ * once more at ~120ms (web fonts / markdown images resolve).
+ */
+function pinToBottom(): void {
+  stickToBottom = true;
+  chatArea.scrollTop = chatArea.scrollHeight;
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      chatArea.scrollTop = chatArea.scrollHeight;
+    });
+  });
+  setTimeout(() => {
+    if (stickToBottom) chatArea.scrollTop = chatArea.scrollHeight;
+  }, 120);
+}
+
 export function setEmptyState(empty: boolean): void {
   if (empty) {
     emptyEl.classList.remove('hidden');
@@ -192,8 +214,7 @@ function startEdit(bubble: HTMLDivElement, msgId: string, current: string): void
 export function renderMessages(messages: Message[]): void {
   messagesEl.innerHTML = '';
   for (const m of messages) appendMessage(m);
-  stickToBottom = true;
-  requestAnimationFrame(() => scrollToBottom(true));
+  pinToBottom();
 }
 
 export function appendMessage(msg: Message, streaming = false): void {
