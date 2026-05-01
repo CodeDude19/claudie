@@ -503,6 +503,16 @@ document.addEventListener('pointerdown', (e) => {
   if (chip && chip.contains(target)) return;
   chatInput.blur();
 });
+
+// On blur, Safari's visualViewport emits resize events lazily (often only once
+// near the end of the keyboard slide-down), which makes the app jump. Pre-fill
+// the viewport vars with the full innerHeight right when blur happens so the
+// transition starts immediately; any final correction from visualViewport just
+// lands at the same value.
+chatInput.addEventListener('blur', () => {
+  root.style.setProperty('--viewport-h', `${window.innerHeight}px`);
+  root.style.setProperty('--viewport-top', `0px`);
+});
 chatInput.addEventListener('keydown', (e) => {
   // Desktop shortcut — Enter sends, Shift+Enter newline. On mobile (no physical keyboard), this is a noop.
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {

@@ -98,6 +98,9 @@ select {
   background: var(--bg);
   /* Promote to compositor for smoother scroll under fixed header */
   transform: translateZ(0);
+  /* Smooth out the stepping visualViewport gives us during keyboard
+     open/close — height changes animate rather than snap. */
+  transition: height 0.22s cubic-bezier(0.33, 1, 0.68, 1);
 }
 
 /* ─────── Header ─────── */
