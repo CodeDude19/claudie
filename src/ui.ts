@@ -323,6 +323,27 @@ export function updateAssistantStream(id: string, text: string, done = false): v
   state.rafId = requestAnimationFrame(() => flushStream(state!));
 }
 
+export function updateAssistantToolStatus(id: string, label: string): void {
+  const bubble = messagesEl.querySelector<HTMLDivElement>(`.msg[data-id="${id}"]`);
+  if (!bubble) return;
+  let status = bubble.querySelector<HTMLDivElement>('.tool-status');
+  if (!status) {
+    status = document.createElement('div');
+    status.className = 'tool-status';
+    status.innerHTML = '<span class="tool-status-spinner"></span><span class="tool-status-text"></span>';
+    const content = bubble.querySelector<HTMLDivElement>('.msg-content');
+    bubble.insertBefore(status, content);
+  }
+  const text = status.querySelector<HTMLSpanElement>('.tool-status-text');
+  if (text) text.textContent = label;
+}
+
+export function clearAssistantToolStatus(id: string): void {
+  const bubble = messagesEl.querySelector<HTMLDivElement>(`.msg[data-id="${id}"]`);
+  const status = bubble?.querySelector('.tool-status');
+  if (status) status.remove();
+}
+
 export function showError(text: string): void {
   errorEl.textContent = text;
   errorEl.classList.remove('hidden');

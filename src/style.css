@@ -569,6 +569,42 @@ body.editing-mode .composer {
   transform: scale(0.98);
 }
 
+/* Tool-call status chip above an assistant bubble */
+.tool-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  margin-bottom: 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid rgba(217, 119, 87, 0.3);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  animation: popIn 0.2s var(--ease);
+}
+
+.tool-status-spinner {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(217, 119, 87, 0.3);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+
+.tool-status-text {
+  max-width: 60vw;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Typing dots while awaiting first token */
 .typing-dots {
   display: inline-flex;
@@ -665,6 +701,32 @@ body.editing-mode .composer {
 
 #chat-input::placeholder {
   color: var(--text-mute);
+}
+
+.web-btn {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-mute);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.18s var(--ease), color 0.18s var(--ease),
+    border-color 0.18s var(--ease), transform 0.15s var(--ease);
+}
+
+.web-btn:active {
+  transform: scale(0.92);
+}
+
+.web-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: rgba(217, 119, 87, 0.45);
 }
 
 .send-btn {

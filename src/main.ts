@@ -47,6 +47,8 @@ import {
   submitEdit,
   cancelEdit,
   getActiveEditId,
+  updateAssistantToolStatus,
+  clearAssistantToolStatus,
 } from './ui';
 import './style.css';
 
@@ -67,6 +69,9 @@ const editChip = document.getElementById('edit-chip')!;
 const editCancelBtn = document.getElementById('edit-cancel')!;
 const editBackdrop = document.getElementById('edit-backdrop')!;
 const sendBtnEl = document.getElementById('send-btn') as HTMLButtonElement;
+
+// Web search toggle
+const webBtn = document.getElementById('web-btn') as HTMLButtonElement;
 
 // System prompt
 const systemPromptBtn = document.getElementById('system-prompt-btn')!;
@@ -384,6 +389,7 @@ async function editAndResend(msgId: string, newText: string): Promise<void> {
 function renderActive(): void {
   const chat = getActiveChat();
   updateSystemPromptDot();
+  updateWebSearchButton();
   if (!chat || chat.messages.length === 0) {
     setEmptyState(true);
     renderMessages([]);
@@ -391,6 +397,13 @@ function renderActive(): void {
   }
   setEmptyState(false);
   renderMessages(chat.messages);
+}
+
+function updateWebSearchButton(): void {
+  const chat = getActiveChat();
+  const on = !!chat?.webSearch;
+  webBtn.classList.toggle('active', on);
+  webBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
 }
 
 // ── Send ──
@@ -474,8 +487,22 @@ async function handleSend(): Promise<void> {
         setSending(false);
         currentStream = null;
       },
+      onToolCall: (name, input) => {
+        const q = name === 'web_search'
+          ? `Searching: "${(input as { query?: string }).query ?? ''}"`
+          : name === 'fetch_page'
+            ? `Reading: ${(input as { url?: string }).url ?? ''}`
+            : `Running tool: ${name}`;
+        updateAssistantToolStatus(assistantMsg.id, q);
+      },
+      onToolResult: (name) => {
+        if (name === 'web_search' || name === 'fetch_page') {
+          clearAssistantToolStatus(assistantMsg.id);
+        }
+      },
     },
-    chat.systemPrompt
+    chat.systemPrompt,
+    { webSearch: !!chat.webSearch }
   );
 
   if (isFirstMessage) {
@@ -958,6 +985,19 @@ function commitSaveName(): void {
 sysTextarea.addEventListener('input', () => {
   sysCharCount.textContent = String(sysTextarea.value.length);
   autoGrowSys();
+});
+
+webBtn.addEventListener('click', () => {
+  let chat = getActiveChat();
+  if (!chat) {
+    newChat();
+    chat = getActiveChat();
+    if (!chat) return;
+  }
+  chat.webSearch = !chat.webSearch;
+  chat.updatedAt = Date.now();
+  persist();
+  updateWebSearchButton();
 });
 
 systemPromptBtn.addEventListener('click', openSysDialog);

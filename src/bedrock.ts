@@ -1,7 +1,8 @@
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
-import { streamText } from 'ai';
+import { streamText, stepCountIs } from 'ai';
 import type { Message } from './storage';
 import { REGION } from './models';
+import { createWebSearchTool, createFetchPageTool } from './websearch';
 
 export const DEFAULT_SYSTEM_PROMPT = `You are Claude, a helpful, concise assistant. Answer clearly and directly. Use markdown sparingly — only when it helps readability.`;
 
@@ -15,6 +16,8 @@ export interface StreamCallbacks {
   onDelta: (chunk: string) => void;
   onDone: (fullText: string) => void;
   onError: (err: Error) => void;
+  onToolCall?: (name: string, input: unknown) => void;
+  onToolResult?: (name: string, result: unknown) => void;
 }
 
 export interface StreamHandle {
@@ -25,7 +28,8 @@ export function streamChat(
   modelId: string,
   history: Message[],
   callbacks: StreamCallbacks,
-  systemPrompt?: string
+  systemPrompt?: string,
+  opts?: { webSearch?: boolean }
 ): StreamHandle {
   if (!apiKey) {
     callbacks.onError(new Error('API key not set'));
@@ -33,7 +37,17 @@ export function streamChat(
   }
 
   const controller = new AbortController();
-  const system = (systemPrompt && systemPrompt.trim()) || DEFAULT_SYSTEM_PROMPT;
+  let system = (systemPrompt && systemPrompt.trim()) || DEFAULT_SYSTEM_PROMPT;
+  if (opts?.webSearch) {
+    system +=
+      '\n\nYou have access to a `web_search` tool (Startpage) and a `fetch_page` tool. ' +
+      'Use them whenever the user asks about current events, live data, or anything ' +
+      'that may have changed recently. Cite sources with inline markdown links.';
+  }
+
+  const tools = opts?.webSearch
+    ? { web_search: createWebSearchTool(), fetch_page: createFetchPageTool() }
+    : undefined;
 
   (async () => {
     try {
@@ -47,12 +61,28 @@ export function streamChat(
         system,
         messages: history.map((m) => ({ role: m.role, content: m.content })),
         abortSignal: controller.signal,
+        tools,
+        // Allow multi-step tool-calling loops when tools are active.
+        stopWhen: tools ? stepCountIs(6) : stepCountIs(1),
       });
 
       let full = '';
-      for await (const delta of result.textStream) {
-        full += delta;
-        callbacks.onDelta(delta);
+      for await (const part of result.fullStream) {
+        if (part.type === 'text-delta') {
+          const delta = (part as { text?: string; textDelta?: string }).text
+            ?? (part as { text?: string; textDelta?: string }).textDelta
+            ?? '';
+          if (delta) {
+            full += delta;
+            callbacks.onDelta(delta);
+          }
+        } else if (part.type === 'tool-call') {
+          const p = part as { toolName: string; input: unknown };
+          callbacks.onToolCall?.(p.toolName, p.input);
+        } else if (part.type === 'tool-result') {
+          const p = part as { toolName: string; output: unknown };
+          callbacks.onToolResult?.(p.toolName, p.output);
+        }
       }
       callbacks.onDone(full);
     } catch (err) {

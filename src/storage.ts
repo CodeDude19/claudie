@@ -15,6 +15,7 @@ export interface Chat {
   createdAt: number;
   updatedAt: number;
   systemPrompt?: string;
+  webSearch?: boolean;
 }
 
 export interface SavedPrompt {
