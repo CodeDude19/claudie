@@ -490,6 +490,19 @@ function autoGrow(): void {
 }
 
 chatInput.addEventListener('input', autoGrow);
+
+// Tap-outside-to-dismiss: blur the composer (and close the iOS keyboard) when
+// the user taps anywhere that isn't the composer itself.
+document.addEventListener('pointerdown', (e) => {
+  if (document.activeElement !== chatInput) return;
+  const target = e.target as Node | null;
+  if (!target) return;
+  // Let presses on the composer / send button / edit chip keep focus.
+  if (chatForm.contains(target)) return;
+  const chip = document.getElementById('edit-chip');
+  if (chip && chip.contains(target)) return;
+  chatInput.blur();
+});
 chatInput.addEventListener('keydown', (e) => {
   // Desktop shortcut — Enter sends, Shift+Enter newline. On mobile (no physical keyboard), this is a noop.
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
