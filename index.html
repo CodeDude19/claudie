@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>claudie</title>
+    <meta name="theme-color" content="#1f1e1d" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="claudie" />
+    <link rel="manifest" href="/claudie/manifest.json" />
+    <link rel="icon" href="/claudie/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/claudie/icon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <!-- Setup Modal -->
+    <div id="cred-overlay" class="overlay hidden">
+      <div class="modal settings-modal">
+        <button id="close-creds" class="modal-close btn-icon" title="Close" aria-label="Close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+        <div class="modal-head">
+          <h2>claudie</h2>
+          <p class="modal-subtitle">Configure your Bedrock key, models, and preferences.</p>
+        </div>
+
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="api-key">Bedrock API Key</label>
+            <input type="password" id="api-key" placeholder="Bedrock API key..." autocomplete="off" />
+          </div>
+
+          <div class="form-group" id="models-group">
+            <div class="models-header">
+              <label>Models <span class="models-count" id="models-count">0/3</span></label>
+              <button type="button" id="refresh-models" class="link-btn">Refresh</button>
+            </div>
+            <p class="models-hint">Pick up to 3 — they'll show in the model switcher.</p>
+            <div id="models-status" class="models-status">Enter your key to load models.</div>
+            <ul id="models-checklist" class="models-checklist hidden"></ul>
+          </div>
+
+          <div class="form-group">
+            <div class="models-header">
+              <label for="font-size-range">Text size <span class="models-count" id="font-size-preview">15</span></label>
+            </div>
+            <div class="font-size-row">
+              <span class="font-size-hint small">A</span>
+              <input type="range" id="font-size-range" min="13" max="22" step="0.5" value="15.5" />
+              <span class="font-size-hint large">A</span>
+            </div>
+          </div>
+
+          <div class="form-group danger-group">
+            <button type="button" id="delete-all-btn" class="btn-danger">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
+              </svg>
+              <span>Delete all chats</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button id="save-creds" class="btn-primary">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirm dialog -->
+    <div id="confirm-overlay" class="overlay hidden" inert>
+      <div class="modal confirm-modal">
+        <h3 id="confirm-title">Are you sure?</h3>
+        <p id="confirm-message" class="modal-subtitle"></p>
+        <div class="confirm-actions">
+          <button type="button" id="confirm-cancel" class="btn-secondary">Cancel</button>
+          <button type="button" id="confirm-ok" class="btn-danger-solid">Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="app" class="hidden">
+      <header>
+        <button id="menu-btn" class="btn-icon" aria-label="Chats">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+        <button id="model-btn" class="model-pill" aria-label="Change model">
+          <span id="model-label">Claude</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </button>
+        <button id="new-chat-btn" class="btn-icon" aria-label="New chat">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+          </svg>
+        </button>
+      </header>
+
+      <!-- Chat area -->
+      <main id="chat-area" class="chat-area">
+        <div id="empty-chat" class="empty-chat">
+          <div class="empty-logo">
+            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+          </div>
+          <h2>How can I help?</h2>
+          <p>Ask anything. Your chats stay on this device.</p>
+        </div>
+        <div id="messages" class="messages"></div>
+      </main>
+
+      <!-- Chats drawer -->
+      <div id="drawer" class="drawer hidden" inert>
+        <div class="drawer-backdrop"></div>
+        <aside class="drawer-panel">
+          <div class="drawer-header">
+            <h3>Chats</h3>
+            <button id="drawer-close" class="btn-icon" aria-label="Close">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <button id="drawer-new" class="drawer-new">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            <span>New chat</span>
+          </button>
+          <ul id="chat-list" class="chat-list"></ul>
+          <p id="chat-list-empty" class="drawer-empty hidden">No chats yet.</p>
+          <div class="drawer-footer">
+            <button id="settings-btn" class="drawer-link">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+              <span>Settings</span>
+            </button>
+          </div>
+        </aside>
+      </div>
+
+      <!-- Model picker sheet -->
+      <div id="model-sheet" class="sheet hidden" inert>
+        <div class="sheet-backdrop"></div>
+        <div class="sheet-panel">
+          <div class="sheet-handle"></div>
+          <h3>Model</h3>
+          <ul id="model-list" class="model-list"></ul>
+        </div>
+      </div>
+
+      <!-- Composer -->
+      <div class="composer-dock">
+        <p id="error-msg" class="error hidden"></p>
+        <div id="edit-chip" class="edit-chip hidden">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+          </svg>
+          <span>Editing message</span>
+          <button type="button" id="edit-cancel" class="edit-chip-close" aria-label="Cancel edit">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <form id="chat-form" class="composer">
+          <textarea id="chat-input" placeholder="Message Claude..." rows="1" autocomplete="off"></textarea>
+          <button type="submit" id="send-btn" class="send-btn" aria-label="Send">
+            <svg class="send-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
+            </svg>
+            <svg class="stop-icon hidden" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="6" width="12" height="12" rx="2"/>
+            </svg>
+            <svg class="save-icon hidden" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+          </button>
+        </form>
+      </div>
+      <div id="edit-backdrop" class="edit-backdrop hidden" aria-hidden="true"></div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

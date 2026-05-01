@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d97757"/>
+      <stop offset="1" stop-color="#c45a3b"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="108" fill="url(#bg)"/>
+  <!-- Claude-inspired stylised "c": open asymmetric arc in cream -->
+  <path d="M350 160
+           C322 130, 282 116, 240 116
+           C162 116, 100 178, 100 256
+           C100 334, 162 396, 240 396
+           C282 396, 322 382, 350 352"
+        fill="none"
+        stroke="#faf9f5"
+        stroke-width="48"
+        stroke-linecap="round"/>
+  <!-- Small accent dot — echoes Claude's spark motif -->
+  <circle cx="380" cy="256" r="18" fill="#faf9f5"/>
+</svg>
