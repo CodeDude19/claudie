@@ -9,8 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@ai-sdk/amazon-bedrock": "^4.0.77",
-    "ai": "^6.0.116",
+    "@ai-sdk/amazon-bedrock": "4.0.77",
+    "ai": "6.0.116",
     "marked": "^18.0.2",
     "typescript": "^5.9.3",
     "vite": "^8.0.0"
