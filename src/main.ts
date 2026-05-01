@@ -579,8 +579,15 @@ document.addEventListener('pointerdown', (e) => {
 // Drive the keyboard slide directly off focus state. Blur commits 0 before
 // visualViewport notices, so the composer starts descending on the same frame
 // the user pressed Enter / tapped away — no perceptible stop-and-drop.
-chatInput.addEventListener('blur', () => keyboard.commit(0));
-chatInput.addEventListener('focus', () => keyboard.refresh());
+chatInput.addEventListener('blur', () => keyboard.commit(0, 'closing'));
+chatInput.addEventListener('focus', () => {
+  // Lift immediately with the last-known keyboard height so the composer
+  // slides up on the same frame as focus, instead of waiting for Safari's
+  // lazy visualViewport.resize. The guard in schedule() prevents a
+  // smaller-than-estimate value from clobbering us mid-open.
+  keyboard.commit(keyboard.estimate(), 'opening');
+  keyboard.refresh();
+});
 chatInput.addEventListener('keydown', (e) => {
   // Desktop shortcut — Enter sends, Shift+Enter newline. On mobile (no physical keyboard), this is a noop.
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
@@ -1085,14 +1092,27 @@ if ('serviceWorker' in navigator) {
 const root = document.documentElement;
 
 const keyboard = (() => {
+  // Cache the last real keyboard height so we can lift optimistically on the
+  // next focus, before visualViewport has a chance to report.
+  const LAST_KB_KEY = 'claudie_last_kb_h';
+  let lastKnownKb = (() => {
+    const n = parseFloat(localStorage.getItem(LAST_KB_KEY) || '');
+    return isFinite(n) && n > 100 ? n : 0;
+  })();
+
   let currentKb = 0;
   let rafId = 0;
   let optimistic = false; // set true while we've committed a value ahead of vv
+  let openDirection: 'opening' | 'closing' | 'idle' = 'idle';
 
   const commit = (kb: number): void => {
     if (kb === currentKb) return;
     currentKb = kb;
     root.style.setProperty('--kb-h', `${kb}px`);
+    if (kb > 100) {
+      lastKnownKb = kb;
+      try { localStorage.setItem(LAST_KB_KEY, String(kb)); } catch { /* ignore */ }
+    }
   };
 
   const measure = (): number => {
@@ -1108,11 +1128,13 @@ const keyboard = (() => {
     if (rafId) return;
     rafId = requestAnimationFrame(() => {
       rafId = 0;
-      // If we committed an optimistic value, only let a larger real value win
-      // (i.e. keyboard still opening). Smaller values during close are the
-      // animation we're already running — ignore them to prevent jitter.
       const next = measure();
-      if (optimistic && next < currentKb) return;
+      // Direction-aware optimistic guard: while opening, only larger values
+      // override our estimate; while closing, only smaller values.
+      if (optimistic) {
+        if (openDirection === 'opening' && next < currentKb) return;
+        if (openDirection === 'closing' && next > currentKb) return;
+      }
       optimistic = false;
       commit(next);
     });
@@ -1127,10 +1149,16 @@ const keyboard = (() => {
   window.addEventListener('orientationchange', () => setTimeout(schedule, 120));
 
   return {
-    /** Commit a value ahead of visualViewport (e.g. on blur, set 0). */
-    commit(kb: number): void {
+    /** Commit a value ahead of visualViewport with an explicit direction. */
+    commit(kb: number, direction: 'opening' | 'closing' | 'idle' = 'idle'): void {
       optimistic = true;
+      openDirection = direction;
       commit(kb);
+    },
+    /** Best guess for the upcoming keyboard height before it opens. */
+    estimate(): number {
+      // Reasonable default for iPhone portrait if we've never seen the kb.
+      return lastKnownKb > 100 ? lastKnownKb : Math.round(window.innerHeight * 0.42);
     },
     refresh: schedule,
   };

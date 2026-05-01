@@ -295,8 +295,15 @@ function flushStream(state: StreamState): void {
       bubble.appendChild(buildActions(stub, bubble));
     }
     streamStates.delete(state.id);
+    // Final scroll after the answer is done. If the user is roughly near the
+    // bottom (within ~300px), pin them there — this guards against the case
+    // where late layout shifts (code blocks, tables, msg-actions appearing)
+    // bumped scrollHeight and the last scroll in-flight missed the mark.
+    const gap = chatArea.scrollHeight - chatArea.scrollTop - chatArea.clientHeight;
+    if (gap < 300) pinToBottom();
+  } else {
+    scrollToBottom();
   }
-  scrollToBottom();
 }
 
 export function updateAssistantStream(id: string, text: string, done = false): void {

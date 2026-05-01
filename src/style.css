@@ -105,19 +105,29 @@ select {
 header {
   flex: 0 0 auto;
   height: var(--header-h);
-  display: flex;
+  display: grid;
+  /* Three columns: left (menu) | centre (model) | right (system + new) */
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   padding: 0 8px;
   background: linear-gradient(to bottom, var(--bg) 70%, rgba(31, 30, 29, 0));
   position: relative;
   z-index: 5;
 }
 
+header #menu-btn {
+  justify-self: start;
+}
+
+header #model-btn {
+  justify-self: center;
+}
+
 .header-right {
   display: inline-flex;
   align-items: center;
   gap: 2px;
+  justify-self: end;
 }
 
 .btn-icon {
