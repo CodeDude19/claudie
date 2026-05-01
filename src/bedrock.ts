@@ -3,7 +3,7 @@ import { streamText } from 'ai';
 import type { Message } from './storage';
 import { REGION } from './models';
 
-const SYSTEM_PROMPT = `You are Claude, a helpful, concise assistant. Answer clearly and directly. Use markdown sparingly — only when it helps readability.`;
+export const DEFAULT_SYSTEM_PROMPT = `You are Claude, a helpful, concise assistant. Answer clearly and directly. Use markdown sparingly — only when it helps readability.`;
 
 let apiKey = '';
 
@@ -24,7 +24,8 @@ export interface StreamHandle {
 export function streamChat(
   modelId: string,
   history: Message[],
-  callbacks: StreamCallbacks
+  callbacks: StreamCallbacks,
+  systemPrompt?: string
 ): StreamHandle {
   if (!apiKey) {
     callbacks.onError(new Error('API key not set'));
@@ -32,6 +33,7 @@ export function streamChat(
   }
 
   const controller = new AbortController();
+  const system = (systemPrompt && systemPrompt.trim()) || DEFAULT_SYSTEM_PROMPT;
 
   (async () => {
     try {
@@ -42,7 +44,7 @@ export function streamChat(
 
       const result = streamText({
         model: bedrock(modelId),
-        system: SYSTEM_PROMPT,
+        system,
         messages: history.map((m) => ({ role: m.role, content: m.content })),
         abortSignal: controller.signal,
       });

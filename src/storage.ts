@@ -14,6 +14,14 @@ export interface Chat {
   messages: Message[];
   createdAt: number;
   updatedAt: number;
+  systemPrompt?: string;
+}
+
+export interface SavedPrompt {
+  id: string;
+  name: string;
+  content: string;
+  createdAt: number;
 }
 
 const API_KEY_KEY = 'claudie_api_key';
@@ -22,6 +30,7 @@ const CHATS_KEY = 'claudie_chats';
 const ACTIVE_CHAT_KEY = 'claudie_active_chat';
 const SELECTED_MODELS_KEY = 'claudie_selected_models';
 const FONT_SIZE_KEY = 'claudie_font_size';
+const SAVED_PROMPTS_KEY = 'claudie_saved_prompts';
 
 export const FONT_SIZE_MIN = 13;
 export const FONT_SIZE_MAX = 22;
@@ -107,4 +116,19 @@ export function saveFontSize(size: number): void {
 export function clearAllChats(): void {
   localStorage.removeItem(CHATS_KEY);
   localStorage.removeItem(ACTIVE_CHAT_KEY);
+}
+
+export function getSavedPrompts(): SavedPrompt[] {
+  const raw = localStorage.getItem(SAVED_PROMPTS_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as SavedPrompt[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveSavedPrompts(prompts: SavedPrompt[]): void {
+  localStorage.setItem(SAVED_PROMPTS_KEY, JSON.stringify(prompts));
 }

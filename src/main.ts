@@ -13,9 +13,12 @@ import {
   saveFontSize,
   clearAllChats,
   FONT_SIZE_DEFAULT,
+  getSavedPrompts,
+  saveSavedPrompts,
   createId,
   type Chat,
   type Message,
+  type SavedPrompt,
 } from './storage';
 import {
   getModels,
@@ -64,6 +67,23 @@ const editChip = document.getElementById('edit-chip')!;
 const editCancelBtn = document.getElementById('edit-cancel')!;
 const editBackdrop = document.getElementById('edit-backdrop')!;
 const sendBtnEl = document.getElementById('send-btn') as HTMLButtonElement;
+
+// System prompt
+const systemPromptBtn = document.getElementById('system-prompt-btn')!;
+const systemPromptDot = document.getElementById('system-prompt-dot')!;
+const sysOverlay = document.getElementById('sys-overlay')!;
+const sysCloseBtn = document.getElementById('sys-close')!;
+const sysTextarea = document.getElementById('sys-textarea') as HTMLTextAreaElement;
+const sysCharCount = document.getElementById('sys-char-count')!;
+const sysSaveBtn = document.getElementById('sys-save-btn')!;
+const sysSavedList = document.getElementById('sys-saved-list')!;
+const sysSavedEmpty = document.getElementById('sys-saved-empty')!;
+const sysClearBtn = document.getElementById('sys-clear')!;
+const sysApplyBtn = document.getElementById('sys-apply')!;
+const sysNameOverlay = document.getElementById('sys-name-overlay')!;
+const sysNameInput = document.getElementById('sys-name-input') as HTMLInputElement;
+const sysNameOk = document.getElementById('sys-name-ok')!;
+const sysNameCancel = document.getElementById('sys-name-cancel')!;
 
 const menuBtn = document.getElementById('menu-btn')!;
 const newChatBtn = document.getElementById('new-chat-btn')!;
@@ -363,6 +383,7 @@ async function editAndResend(msgId: string, newText: string): Promise<void> {
 
 function renderActive(): void {
   const chat = getActiveChat();
+  updateSystemPromptDot();
   if (!chat || chat.messages.length === 0) {
     setEmptyState(true);
     renderMessages([]);
@@ -423,34 +444,39 @@ async function handleSend(): Promise<void> {
   // Bedrock rejects requests with empty ContentBlocks.
   const history = chat.messages.slice(0, -1).filter((m) => m.content.trim().length > 0);
 
-  currentStream = streamChat(chat.model, history, {
-    onDelta: (delta) => {
-      assistantMsg.content += delta;
-      updateAssistantStream(assistantMsg.id, assistantMsg.content);
+  currentStream = streamChat(
+    chat.model,
+    history,
+    {
+      onDelta: (delta) => {
+        assistantMsg.content += delta;
+        updateAssistantStream(assistantMsg.id, assistantMsg.content);
+      },
+      onDone: (full) => {
+        assistantMsg.content = full;
+        updateAssistantStream(assistantMsg.id, full, true);
+        chat!.updatedAt = Date.now();
+        persist();
+        isStreaming = false;
+        setSending(false);
+        currentStream = null;
+      },
+      onError: (err) => {
+        if (!assistantMsg.content) {
+          // Remove empty assistant bubble on error.
+          chat!.messages.pop();
+        }
+        updateAssistantStream(assistantMsg.id, assistantMsg.content || '', true);
+        renderActive();
+        showError(err.message || 'Something went wrong.');
+        persist();
+        isStreaming = false;
+        setSending(false);
+        currentStream = null;
+      },
     },
-    onDone: (full) => {
-      assistantMsg.content = full;
-      updateAssistantStream(assistantMsg.id, full, true);
-      chat!.updatedAt = Date.now();
-      persist();
-      isStreaming = false;
-      setSending(false);
-      currentStream = null;
-    },
-    onError: (err) => {
-      if (!assistantMsg.content) {
-        // Remove empty assistant bubble on error.
-        chat!.messages.pop();
-      }
-      updateAssistantStream(assistantMsg.id, assistantMsg.content || '', true);
-      renderActive();
-      showError(err.message || 'Something went wrong.');
-      persist();
-      isStreaming = false;
-      setSending(false);
-      currentStream = null;
-    },
-  });
+    chat.systemPrompt
+  );
 
   if (isFirstMessage) {
     generateTitle(chat.model, text).then((title) => {
@@ -799,6 +825,184 @@ document.addEventListener('keydown', (e) => {
     cancelEdit();
     syncEditUI();
   }
+});
+
+// ── System prompt dialog ──
+
+let savedPrompts: SavedPrompt[] = getSavedPrompts();
+
+function updateSystemPromptDot(): void {
+  const chat = getActiveChat();
+  const has = !!(chat?.systemPrompt && chat.systemPrompt.trim());
+  systemPromptDot.classList.toggle('visible', has);
+}
+
+function openSysDialog(): void {
+  const chat = getActiveChat();
+  sysTextarea.value = chat?.systemPrompt ?? '';
+  sysCharCount.textContent = String(sysTextarea.value.length);
+  renderSavedPromptsList();
+  sysOverlay.classList.remove('hidden');
+  sysOverlay.removeAttribute('inert');
+  requestAnimationFrame(() => {
+    sysOverlay.classList.add('open');
+    autoGrowSys();
+  });
+}
+
+function closeSysDialog(): void {
+  if (sysOverlay.contains(document.activeElement)) {
+    (document.activeElement as HTMLElement).blur();
+  }
+  sysOverlay.classList.remove('open');
+  sysOverlay.setAttribute('inert', '');
+  setTimeout(() => sysOverlay.classList.add('hidden'), 200);
+}
+
+function autoGrowSys(): void {
+  sysTextarea.style.height = 'auto';
+  const max = Math.min(360, Math.round(window.innerHeight * 0.4));
+  sysTextarea.style.height = Math.min(max, Math.max(120, sysTextarea.scrollHeight)) + 'px';
+}
+
+function renderSavedPromptsList(): void {
+  sysSavedList.innerHTML = '';
+  if (savedPrompts.length === 0) {
+    sysSavedEmpty.classList.remove('hidden');
+    sysSavedList.classList.add('hidden');
+    return;
+  }
+  sysSavedEmpty.classList.add('hidden');
+  sysSavedList.classList.remove('hidden');
+  const current = sysTextarea.value.trim();
+  for (const p of savedPrompts) {
+    const li = document.createElement('li');
+    li.className = 'sys-saved-item' + (p.content.trim() === current ? ' active' : '');
+
+    const main = document.createElement('button');
+    main.type = 'button';
+    main.className = 'sys-saved-main';
+    const name = document.createElement('span');
+    name.className = 'sys-saved-name';
+    name.textContent = p.name;
+    const preview = document.createElement('span');
+    preview.className = 'sys-saved-preview';
+    preview.textContent = p.content.replace(/\s+/g, ' ').slice(0, 80);
+    main.appendChild(name);
+    main.appendChild(preview);
+    main.addEventListener('click', () => {
+      sysTextarea.value = p.content;
+      sysCharCount.textContent = String(sysTextarea.value.length);
+      autoGrowSys();
+      renderSavedPromptsList();
+    });
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'sys-saved-del';
+    del.setAttribute('aria-label', 'Delete saved prompt');
+    del.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>';
+    del.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const ok = await confirmDialog({
+        title: 'Delete saved prompt?',
+        message: `"${p.name}" will be removed from your saved list.`,
+        confirmLabel: 'Delete',
+      });
+      if (!ok) return;
+      savedPrompts = savedPrompts.filter((x) => x.id !== p.id);
+      saveSavedPrompts(savedPrompts);
+      renderSavedPromptsList();
+    });
+
+    li.appendChild(main);
+    li.appendChild(del);
+    sysSavedList.appendChild(li);
+  }
+}
+
+function openSaveNameDialog(): void {
+  const content = sysTextarea.value.trim();
+  if (!content) return;
+  sysNameInput.value = '';
+  sysNameOverlay.classList.remove('hidden');
+  sysNameOverlay.removeAttribute('inert');
+  requestAnimationFrame(() => {
+    sysNameOverlay.classList.add('open');
+    sysNameInput.focus();
+  });
+}
+
+function closeSaveNameDialog(): void {
+  if (sysNameOverlay.contains(document.activeElement)) {
+    (document.activeElement as HTMLElement).blur();
+  }
+  sysNameOverlay.classList.remove('open');
+  sysNameOverlay.setAttribute('inert', '');
+  setTimeout(() => sysNameOverlay.classList.add('hidden'), 200);
+}
+
+function commitSaveName(): void {
+  const name = sysNameInput.value.trim();
+  const content = sysTextarea.value.trim();
+  if (!name || !content) {
+    closeSaveNameDialog();
+    return;
+  }
+  savedPrompts.unshift({ id: createId(), name, content, createdAt: Date.now() });
+  saveSavedPrompts(savedPrompts);
+  renderSavedPromptsList();
+  closeSaveNameDialog();
+}
+
+sysTextarea.addEventListener('input', () => {
+  sysCharCount.textContent = String(sysTextarea.value.length);
+  autoGrowSys();
+});
+
+systemPromptBtn.addEventListener('click', openSysDialog);
+sysCloseBtn.addEventListener('click', closeSysDialog);
+sysOverlay.addEventListener('click', (e) => {
+  if (e.target === sysOverlay) closeSysDialog();
+});
+
+sysApplyBtn.addEventListener('click', () => {
+  const chat = getActiveChat();
+  if (!chat) {
+    // No active chat — create one so the prompt has somewhere to live.
+    newChat();
+  }
+  const target = getActiveChat();
+  if (!target) return;
+  target.systemPrompt = sysTextarea.value.trim() || undefined;
+  target.updatedAt = Date.now();
+  persist();
+  updateSystemPromptDot();
+  closeSysDialog();
+});
+
+sysClearBtn.addEventListener('click', () => {
+  sysTextarea.value = '';
+  sysCharCount.textContent = '0';
+  autoGrowSys();
+  renderSavedPromptsList();
+  sysTextarea.focus();
+});
+
+sysSaveBtn.addEventListener('click', openSaveNameDialog);
+sysNameOk.addEventListener('click', commitSaveName);
+sysNameCancel.addEventListener('click', closeSaveNameDialog);
+sysNameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    commitSaveName();
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    closeSaveNameDialog();
+  }
+});
+sysNameOverlay.addEventListener('click', (e) => {
+  if (e.target === sysNameOverlay) closeSaveNameDialog();
 });
 
 // ── Service worker ──
