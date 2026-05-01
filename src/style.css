@@ -36,9 +36,13 @@
   /* User-controlled */
   --msg-font-size: 15.5px;
 
-  /* Dynamic viewport tracking (driven from JS via visualViewport). */
-  --viewport-h: 100dvh;
-  --viewport-top: 0px;
+  /* Keyboard height in px, driven from JS via visualViewport.
+     The chat area pads by this amount; the composer lifts by this amount. */
+  --kb-h: 0px;
+
+  /* System-like iOS easing curve — same shape UIKit uses for keyboard slide. */
+  --kb-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --kb-dur: 240ms;
 }
 
 * {
@@ -84,23 +88,16 @@ select {
 
 #app {
   position: fixed;
-  left: 0;
-  right: 0;
-  /* Pin to the visual viewport — Safari otherwise scrolls the layout viewport
-     when the keyboard opens, sending our "fixed" bar flying up to the notch. */
-  top: var(--viewport-top);
-  height: var(--viewport-h);
+  inset: 0;
   display: flex;
   flex-direction: column;
   padding-top: var(--sat);
   padding-left: var(--sal);
   padding-right: var(--sar);
   background: var(--bg);
-  /* Promote to compositor for smoother scroll under fixed header */
+  /* Promote to its own layer so composer transforms don't invalidate the
+     header/chat area raster. */
   transform: translateZ(0);
-  /* Smooth out the stepping visualViewport gives us during keyboard
-     open/close — height changes animate rather than snap. */
-  transition: height 0.22s cubic-bezier(0.33, 1, 0.68, 1);
 }
 
 /* ─────── Header ─────── */
@@ -175,10 +172,11 @@ header {
   -webkit-overflow-scrolling: touch;
   position: relative;
   padding: 8px 16px 24px;
-  /* leave room for composer at bottom */
-  padding-bottom: calc(var(--composer-min) + var(--sab) + 32px);
+  /* Room for composer + keyboard. --kb-h collapses to 0 when keyboard hidden. */
+  padding-bottom: calc(var(--composer-min) + var(--sab) + 32px + var(--kb-h));
   scroll-behavior: smooth;
   overscroll-behavior: contain;
+  transition: padding-bottom var(--kb-dur) var(--kb-ease);
 }
 
 .chat-area::-webkit-scrollbar {
@@ -588,6 +586,10 @@ body.editing-mode .composer {
   gap: 6px;
   z-index: 4;
   pointer-events: none;
+  /* Lift above the keyboard. Transform (not layout) — compositor-only. */
+  transform: translate3d(0, calc(var(--kb-h) * -1), 0);
+  transition: transform var(--kb-dur) var(--kb-ease);
+  will-change: transform;
 }
 
 .composer-dock > * {

@@ -504,15 +504,11 @@ document.addEventListener('pointerdown', (e) => {
   chatInput.blur();
 });
 
-// On blur, Safari's visualViewport emits resize events lazily (often only once
-// near the end of the keyboard slide-down), which makes the app jump. Pre-fill
-// the viewport vars with the full innerHeight right when blur happens so the
-// transition starts immediately; any final correction from visualViewport just
-// lands at the same value.
-chatInput.addEventListener('blur', () => {
-  root.style.setProperty('--viewport-h', `${window.innerHeight}px`);
-  root.style.setProperty('--viewport-top', `0px`);
-});
+// Drive the keyboard slide directly off focus state. Blur commits 0 before
+// visualViewport notices, so the composer starts descending on the same frame
+// the user pressed Enter / tapped away — no perceptible stop-and-drop.
+chatInput.addEventListener('blur', () => keyboard.commit(0));
+chatInput.addEventListener('focus', () => keyboard.refresh());
 chatInput.addEventListener('keydown', (e) => {
   // Desktop shortcut — Enter sends, Shift+Enter newline. On mobile (no physical keyboard), this is a noop.
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
@@ -810,34 +806,82 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/claudie/sw.js').catch(() => {});
 }
 
-// ── Viewport + iOS keyboard ──
-// Pin the app to the visual viewport. On iOS Safari, focusing an input that
-// would be hidden behind the keyboard makes the *layout* viewport scroll up —
-// which sends anything `position: fixed; top: 0` flying toward the notch.
-// Tracking `visualViewport.offsetTop` and re-pinning there cancels that scroll.
+// ── Keyboard inset controller ──
+// Expose one CSS variable (`--kb-h`) representing the keyboard's intrusion
+// into the viewport. The composer lifts by this amount via transform; the
+// chat area pads by it. Transforms are GPU-composited — no layout on every
+// visualViewport tick.
+//
+// Design notes:
+//   • rAF-coalesce updates. Safari emits `visualViewport.resize` during scroll
+//     too; without batching we'd thrash.
+//   • Optimistic commit on blur. `--kb-h := 0` on blur starts the slide
+//     immediately rather than waiting for Safari's lazy end-of-animation event.
+//   • Anchor to layout viewport, not visual. The app is `position: fixed;
+//     inset: 0`, so visualViewport.offsetTop isn't relevant here.
 const root = document.documentElement;
-function updateViewport(): void {
+
+const keyboard = (() => {
+  let currentKb = 0;
+  let rafId = 0;
+  let optimistic = false; // set true while we've committed a value ahead of vv
+
+  const commit = (kb: number): void => {
+    if (kb === currentKb) return;
+    currentKb = kb;
+    root.style.setProperty('--kb-h', `${kb}px`);
+  };
+
+  const measure = (): number => {
+    const vv = window.visualViewport;
+    if (!vv) return 0;
+    // Keyboard = layout height - visual height - offsetTop. Clamp to avoid
+    // negative values from sub-pixel rounding during scroll inertia.
+    const kb = window.innerHeight - vv.height - vv.offsetTop;
+    return Math.max(0, Math.round(kb));
+  };
+
+  const schedule = (): void => {
+    if (rafId) return;
+    rafId = requestAnimationFrame(() => {
+      rafId = 0;
+      // If we committed an optimistic value, only let a larger real value win
+      // (i.e. keyboard still opening). Smaller values during close are the
+      // animation we're already running — ignore them to prevent jitter.
+      const next = measure();
+      if (optimistic && next < currentKb) return;
+      optimistic = false;
+      commit(next);
+    });
+  };
+
   const vv = window.visualViewport;
   if (vv) {
-    root.style.setProperty('--viewport-h', `${vv.height}px`);
-    root.style.setProperty('--viewport-top', `${vv.offsetTop}px`);
-  } else {
-    root.style.setProperty('--viewport-h', `${window.innerHeight}px`);
-    root.style.setProperty('--viewport-top', `0px`);
+    vv.addEventListener('resize', schedule);
+    vv.addEventListener('scroll', schedule);
   }
-}
-updateViewport();
-if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', updateViewport);
-  window.visualViewport.addEventListener('scroll', updateViewport);
-}
-window.addEventListener('resize', updateViewport);
-window.addEventListener('orientationchange', () => setTimeout(updateViewport, 120));
-// iOS sometimes scrolls the page on focus/blur even with position:fixed.
-// Snap back to origin whenever the document scrolls; the app is fixed anyway.
-window.addEventListener('scroll', () => {
-  if (window.scrollY !== 0 || window.scrollX !== 0) window.scrollTo(0, 0);
-}, { passive: true });
+  window.addEventListener('resize', schedule);
+  window.addEventListener('orientationchange', () => setTimeout(schedule, 120));
+
+  return {
+    /** Commit a value ahead of visualViewport (e.g. on blur, set 0). */
+    commit(kb: number): void {
+      optimistic = true;
+      commit(kb);
+    },
+    refresh: schedule,
+  };
+})();
+
+// iOS occasionally scrolls the document when focusing an input even with
+// position: fixed. Snap it back — the app is pinned anyway.
+window.addEventListener(
+  'scroll',
+  () => {
+    if (window.scrollX !== 0 || window.scrollY !== 0) window.scrollTo(0, 0);
+  },
+  { passive: true }
+);
 
 // Prevent double-tap zoom on iOS for interactive controls (touch-action: manipulation
 // handles most of this, but belt + suspenders for older iOS).
